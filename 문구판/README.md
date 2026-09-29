@@ -19,6 +19,9 @@
 
 ## 적용 순서 (Apps Script 편집기, u/1 계정)
 
+같은 파일을 Drive '문구판' 폴더에도 올려 두었다(09-29, 저장소 파일과 바이트 단위로 같음):
+`AppUI_v3.html` (id `11JVtn2kNOKwGcQtuXTGvixlJDmJspHdV`), `AP_backfill.gs` (id `1sdsqe-9iiQ9fBoHbd7RZvTMX5dKg1DRz`).
+
 1. `AppUI` HTML 파일 내용을 이 저장소의 `AppUI.html`로 통째로 바꾼다.
 2. 새 스크립트 파일 `AP_backfill`을 만들고 `AP_backfill.gs`를 붙인다.
 3. `AP_backfillPreview`를 실행해 로그를 본다. "붙일 예정 124행"이 나오면 된다(그사이 서술을 고친 행은 건너뜀으로 나온다).
