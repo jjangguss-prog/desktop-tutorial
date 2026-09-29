@@ -34,8 +34,16 @@ a{color:inherit}
 .tab{border:0;background:transparent;padding:6px 12px;border-radius:999px;cursor:pointer;font-weight:600;color:var(--ink2)}
 .tab[aria-selected=true]{background:var(--on);color:var(--on-ink)}
 .tab .n{display:inline-block;min-width:18px;margin-left:4px;padding:0 5px;border-radius:9px;background:var(--need-line);color:#231a00;font-size:12px;line-height:18px;text-align:center}
+.switch{white-space:nowrap;display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px 4px 5px;cursor:pointer;font-weight:600;font-size:13px;color:var(--ink2)}
+.switch .knob{flex:none;width:30px;height:18px;border-radius:9px;background:var(--chip);position:relative;transition:background .15s}
+.switch .knob::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgba(0,0,0,.3);transition:transform .15s}
+.switch[aria-checked=true]{color:var(--ink);border-color:var(--ink3)}
+.switch[aria-checked=true] .knob{background:var(--on)}
+.switch[aria-checked=true] .knob::after{transform:translateX(12px)}
+.switch .n{font-size:12px;color:var(--ink3);font-weight:700}
+@media (prefers-reduced-motion:reduce){.switch .knob,.switch .knob::after{transition:none}}
 .status{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--ink3);font-size:12.5px}
-.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:600}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 12px;cursor:pointer;font-weight:600;white-space:nowrap}
 .btn:hover{border-color:var(--ink3)}
 .btn:disabled{opacity:.5;cursor:default}
 main{max-width:1680px;margin:0 auto;padding:12px 16px 80px}
@@ -101,6 +109,16 @@ main{max-width:1680px;margin:0 auto;padding:12px 16px 80px}
 .judge.done .jh{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;opacity:.9}
 .judge.done .jh .lnk{margin-left:auto;color:inherit;text-decoration:underline}
 .judge.done p{margin:2px 0 0;font-size:13px;white-space:pre-wrap}
+.judge.done.cut{background:var(--warn-bg);color:var(--ink)}
+.judge.done.cut .jh{color:var(--warn)}
+.judge .sublab{display:block;font-size:12px;font-weight:700;color:var(--ink2);margin:0 0 4px}
+.judge.need .sublab{color:var(--need-ink)}
+.jtags{display:flex;flex-wrap:wrap;gap:4px;margin:0 0 8px}
+.jtag{border:1px solid var(--line);background:var(--surface);color:var(--ink2);padding:3px 10px;border-radius:999px;cursor:pointer;font-weight:600;font-size:12.5px}
+.jtag:hover{border-color:var(--warn)}
+.jtag[aria-pressed=true]{background:var(--warn-bg);color:var(--warn);border-color:var(--warn)}
+.rtags{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.tag.rej{background:var(--surface);color:var(--warn);border:1px solid var(--warn);font-weight:700}
 .saving{opacity:.6;pointer-events:none}
 .find{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;margin:4px 0 12px}
 .find label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--ink3);font-weight:600}
@@ -121,6 +139,7 @@ main{max-width:1680px;margin:0 auto;padding:12px 16px 80px}
   .grid.shorts{grid-template-columns:repeat(2,1fr)}
   .phrase{font-size:19px}
   .judge textarea,.find input,.find select{font-size:16px} /* iOS가 입력칸을 누를 때 화면을 확대하지 않게 */
+  .jtag{padding:6px 12px;font-size:13.5px} /* 손가락으로 누르기 쉽게 */
 }
 @media (pointer:coarse){.jbar .hint{display:none}} /* 폰에는 Ctrl+Enter가 없으니 저장 버튼만 */
 </style>
@@ -132,6 +151,7 @@ main{max-width:1680px;margin:0 auto;padding:12px 16px 80px}
     <button class="tab" role="tab" data-view="board" aria-selected="true">문구판<span class="n" id="n-pending" hidden></span></button>
     <button class="tab" role="tab" data-view="find" aria-selected="false">문구 찾기</button>
   </nav>
+  <button class="switch" id="hide-cut" role="switch" aria-checked="false" title="바로 쓰기 어렵다고 판정한 문구를 모든 목록에서 뺍니다"><span class="knob"></span>걸러낸 문구 숨기기<span class="n" id="n-cut"></span></button>
   <div class="status"><span id="stamp"></span><button class="btn" id="refresh" title="스냅샷을 지금 다시 만듭니다">새로 고침</button></div>
 </div></header>
 <main id="main"></main>
@@ -148,8 +168,21 @@ var ORDER = ['ref', 'own', 'rise', 'short'];
 var BATCH = window.matchMedia && matchMedia('(max-width: 640px)').matches ? 12 : 36; // 폰에서는 한 번에 12장씩
 var MAC = /Mac|iPhone|iPad/.test(navigator.platform || '');
 var KEY = MAC ? '⌘+Enter' : 'Ctrl+Enter';
-var S = { cards: [], byId: {}, snap: {}, view: 'board', src: 'all', cat: '', shortSort: 'views',
-  q: { g: '', c1: '', c2: '', kw: '' }, drafts: {}, open: {}, editing: {}, lists: {}, guests: [] };
+// 바로 쓰기 어려운 이유(PD 09-29: 과장·국뽕·허위·지식형 + 판정 기록에 자주 나온 '우리 채널이 안 다루는 주제').
+// 여러 개 고를 수 있고, 고르면 J열 첫 줄에 '[바로 쓰기 어려움] 과장 · 애국심 자극'으로 적힌다.
+// 태그를 더하거나 이름을 바꿀 때는 여기만 고친다(이미 적힌 옛 이름도 그대로 읽힌다).
+var CUT_HEAD = '바로 쓰기 어려움';
+var CUT_TAGS = [
+  { k: '과장', d: '내용보다 센 표현 · 근거 없는 단정 · 격 떨어지는 자극' },
+  { k: '사실과 다름', d: '틀렸거나 게스트가 하지 않았을 말을 사실처럼 씀' },
+  { k: '애국심 자극', d: "'한국에 세계가 놀랐다' · '남의 나라 망했다'류의 국가 띄우기(국뽕)" },
+  { k: '교양형', d: "지식 채널에는 맞지만 시청자에게 '그래서 나는?'이 없음" },
+  { k: '채널 밖 주제', d: '국방·방산·북한·가십처럼 우리 시청자가 볼 이유가 적은 주제' }
+];
+var CUT_RE = /^\s*\[바로 쓰기 어려움\]\s*(.*)$/;
+var LS_HIDE = 'munkupan.hideCut';
+var S = { cards: [], byId: {}, snap: {}, view: 'board', src: 'all', cat: '', shortSort: 'views', hide: lsGet(LS_HIDE) === '1',
+  q: { g: '', c1: '', c2: '', kw: '' }, drafts: {}, dtags: {}, open: {}, editing: {}, lists: {}, guests: [] };
 var main = document.getElementById('main');
 var io = 'IntersectionObserver' in window ? new IntersectionObserver(function (es) {
   es.forEach(function (e) { if (e.isIntersecting) appendBatch(e.target.getAttribute('data-key')); });
@@ -164,6 +197,26 @@ function needX() { return (S.snap && S.snap.needX) || 3; }
 // 판정 필요 = '내 판정' J열이 빈 행 + '내 판정'에 없는 레퍼런스 중 배수 needX 이상(PD 09-27)
 function isNew(c) { return !c.j && c.s === 'ref' && !c.oos && c.x != null && c.x >= needX(); }
 function isPending(c) { return !!(c.j && !c.j.text) || isNew(c); }
+function lsGet(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
+function lsSet(k, v) { try { window.localStorage.setItem(k, v); } catch (e) {} }
+
+// ── 바로 쓰기 어려움 태그 ─────────────────────────────────
+// J열 = '[바로 쓰기 어려움] 태그 · 태그' 첫 줄(있을 때만) + 서술 메모. 첫 줄 꼴이 아니면 전부 서술로 읽는다.
+function parseJ(text) {
+  var s = String(text || ''), nl = s.indexOf('\n'), m = CUT_RE.exec(nl < 0 ? s : s.slice(0, nl));
+  if (!m) return { cut: false, tags: [], memo: s.trim() };
+  return { cut: true, tags: m[1].split(/\s*[·,]\s*/).map(function (t) { return t.trim(); }).filter(Boolean), memo: nl < 0 ? '' : s.slice(nl + 1).trim() };
+}
+function tagOrder(t) { for (var i = 0; i < CUT_TAGS.length; i++) if (CUT_TAGS[i].k === t) return i; return CUT_TAGS.length; }
+function composeJ(tags, memo) {
+  memo = String(memo || '').trim();
+  if (!tags.length) return memo;
+  tags = tags.slice().sort(function (a, b) { return tagOrder(a) - tagOrder(b); });
+  return '[' + CUT_HEAD + '] ' + tags.join(' · ') + (memo ? '\n' + memo : '');
+}
+// 걸러낸 문구 = PD가 태그로 '바로 쓰기 어려움'을 단 판정만. 서술만 있는 판정·판정 전 카드는 살아남는다
+function isCut(c) { return !!(c.j && c.j.text && parseJ(c.j.text).cut); }
+function shown(c) { return !S.hide || !isCut(c); }
 function fmtV(v) {
   if (v == null) return '–';
   if (v >= 1e8) return (v / 1e8).toFixed(1).replace(/\.0$/, '') + '억';
@@ -208,31 +261,55 @@ function sortAll(L) {
   return L;
 }
 
+function boardScope(c) { return (S.src === 'all' || S.src === c.s) && (!S.cat || c.c1 === S.cat); }
 function boardLists() {
   var L = { pending: [], ref: [], own: [], rise: [], short: [] };
   S.cards.forEach(function (c) {
-    if (S.src !== 'all' && S.src !== c.s) return;
-    if (S.cat && c.c1 !== S.cat) return;
-    if (isPending(c)) L.pending.push(c); else if (!c.oos) L[c.s].push(c);
+    if (!boardScope(c)) return;
+    if (isPending(c)) L.pending.push(c); else if (!c.oos && shown(c)) L[c.s].push(c);
   });
   return sortAll(L);
 }
 
-function findLists() {
+// 문구 찾기 조건. pin = 같은 게스트·다른 채널(대분류와 관계없이), main = 나머지 목록
+function findMatch() {
   var q = S.q, gq = norm(q.g), kws = String(q.kw || '').trim().split(/\s+/).map(norm).filter(Boolean);
   var gm = function (c) { return !gq || norm(c.g).indexOf(gq) >= 0; };
   var km = function (c) { if (!kws.length) return true; var h = norm([c.p, c.t, c.cl, c.g, c.ch].join(' ')); return kws.every(function (k) { return h.indexOf(k) >= 0; }); };
   var cm = function (c) { return (!q.c1 || c.c1 === q.c1) && (!q.c2 || c.c2 === q.c2); };
-  var L = { pin: [], ref: [], own: [], rise: [], short: [] }, pinned = {};
-  var pool = S.cards.filter(function (c) { return !c.oos; });
-  if (gq) pool.forEach(function (c) { if (c.s === 'ref' && gm(c) && km(c)) { L.pin.push(c); pinned[c.id] = 1; } });
-  pool.forEach(function (c) { if (!pinned[c.id] && gm(c) && km(c) && cm(c)) L[c.s].push(c); });
+  return { pin: function (c) { return !!gq && c.s === 'ref' && gm(c) && km(c); }, main: function (c) { return gm(c) && km(c) && cm(c); } };
+}
+function findLists() {
+  var f = findMatch(), L = { pin: [], ref: [], own: [], rise: [], short: [] };
+  S.cards.forEach(function (c) {
+    if (c.oos || !shown(c)) return;
+    if (f.pin(c)) L.pin.push(c); else if (f.main(c)) L[c.s].push(c);
+  });
   return sortAll(L);
+}
+
+// 지금 화면 범위(소스·대분류 또는 찾기 조건)에서 숨긴 카드 수
+function hidCount() {
+  var f = S.view === 'find' ? findMatch() : null;
+  return S.cards.filter(function (c) { return !c.oos && isCut(c) && (f ? f.pin(c) || f.main(c) : boardScope(c)); }).length;
+}
+function hidNoteText() {
+  var n = S.hide ? hidCount() : 0;
+  return n ? "'" + CUT_HEAD + "' 태그를 단 문구 " + n + '편을 숨겼습니다. 위 스위치를 끄면 다시 보입니다.' : '';
+}
+function hidNoteHTML() { var t = hidNoteText(); return '<div class="note" id="hid-note"' + (t ? '' : ' hidden') + '>' + esc(t) + '</div>'; }
+function updateCut() {
+  var el = $('#hid-note'), t = hidNoteText();
+  if (el) { el.textContent = t; el.hidden = !t; }
+  var n = S.cards.filter(function (c) { return !c.oos && isCut(c); }).length, sw = $('#hide-cut');
+  sw.setAttribute('aria-checked', String(S.hide));
+  $('#n-cut').textContent = n ? n : '';
+  sw.title = '바로 쓰기 어렵다고 판정한 문구 ' + n + '편을 모든 목록에서 뺍니다(판정 필요 카드는 그대로)';
 }
 
 // ── 화면 ─────────────────────────────────────────────
 function render() {
-  updateBadge();
+  updateBadge(); updateCut();
   [].forEach.call(document.querySelectorAll('.tab'), function (t) { t.setAttribute('aria-selected', String(t.getAttribute('data-view') === S.view)); });
   if (S.view === 'board') renderBoard(); else renderFind();
 }
@@ -294,7 +371,7 @@ function renderBoard() {
   var h = ['<div class="filters"><div class="row"><span class="lab">소스</span>' + chip('src', 'all', '전체', S.src === 'all') +
     ORDER.map(function (k) { return chip('src', k, SRC[k], S.src === k); }).join('') + '</div>' +
     '<div class="row"><span class="lab">대분류</span>' + chip('cat', '', '전체', !S.cat) + CATS.map(function (c) { return chip('cat', c, c, S.cat === c); }).join('') + '</div>' +
-    catNote(S.cat, srcs) + '</div>'];
+    catNote(S.cat, srcs) + hidNoteHTML() + '</div>'];
   var keys = ['pending'].concat(srcs);
   keys.forEach(function (k) { h.push(sectionHTML(k, S.lists[k])); });
   main.innerHTML = h.join('');
@@ -323,7 +400,7 @@ function renderFindResults() {
   }
   S.lists = findLists();
   var keys = (norm(q.g) ? ['pin'] : []).concat(ORDER);
-  box.innerHTML = catNote(q.c1) + keys.map(function (k) { return sectionHTML(k, S.lists[k]); }).join('');
+  box.innerHTML = catNote(q.c1) + hidNoteHTML() + keys.map(function (k) { return sectionHTML(k, S.lists[k]); }).join('');
   mountSections(keys);
 }
 
@@ -361,12 +438,25 @@ function cardHTML(c) {
 }
 function judgeHTML(c) {
   var id = esc(c.id), hasText = !!(c.j && c.j.text);
-  if (hasText && !S.editing[c.id]) return '<div class="judge done"><div class="jh">내 판정<button class="lnk" data-act="edit" data-id="' + id + '">고치기</button></div><p>' + esc(c.j.text) + '</p></div>';
+  if (hasText && !S.editing[c.id]) {
+    var pj = parseJ(c.j.text), edit = '<button class="lnk" data-act="edit" data-id="' + id + '">고치기</button>';
+    if (pj.cut) return '<div class="judge done cut"><div class="jh">' + CUT_HEAD + edit + '</div>' +
+      (pj.tags.length ? '<div class="rtags">' + pj.tags.map(function (t) { return '<span class="tag rej">' + esc(t) + '</span>'; }).join('') + '</div>' : '') +
+      (pj.memo ? '<p>' + esc(pj.memo) + '</p>' : '') + '</div>';
+    return '<div class="judge done"><div class="jh">내 판정' + edit + '</div><p>' + esc(c.j.text) + '</p></div>';
+  }
   var editing = !!S.editing[c.id], need = isPending(c) && !editing;
   if (!need && !editing && !S.open[c.id]) return '';
-  var val = S.drafts[c.id] != null ? S.drafts[c.id] : editing ? c.j.text : '';
-  return '<div class="judge ' + (need ? 'need' : 'open') + '"><label for="ta-' + id + '">' + (editing ? '내 판정 고치기' : '내 판정(서술)') + '</label>' +
-    '<textarea id="ta-' + id + '" data-id="' + id + '" rows="3" placeholder="이 문구, 우리 채널에서 그대로 쓸 수 있나?">' + esc(val) + '</textarea>' +
+  var pj0 = editing ? parseJ(c.j.text) : { tags: [], memo: '' };
+  var val = S.drafts[c.id] != null ? S.drafts[c.id] : pj0.memo;
+  var on = S.dtags[c.id] || (S.dtags[c.id] = pj0.tags.slice());
+  var extra = on.filter(function (t) { return tagOrder(t) === CUT_TAGS.length; }); // 목록에서 빠진 옛 태그도 끌 수 있게 보여 준다
+  var chips = CUT_TAGS.concat(extra.map(function (t) { return { k: t, d: '예전 태그' }; })).map(function (t) {
+    return '<button type="button" class="jtag" data-act="tag" data-id="' + id + '" data-val="' + esc(t.k) + '" aria-pressed="' + (on.indexOf(t.k) >= 0) + '" title="' + esc(t.d) + '">' + esc(t.k) + '</button>';
+  }).join('');
+  return '<div class="judge ' + (need ? 'need' : 'open') + '"><span class="sublab">' + CUT_HEAD + ' · 여러 개 고를 수 있음</span><div class="jtags">' + chips + '</div>' +
+    '<label for="ta-' + id + '">' + (editing ? '내 판정 고치기' : '내 판정(서술)') + '</label>' +
+    '<textarea id="ta-' + id + '" data-id="' + id + '" rows="3" placeholder="이 문구, 우리 채널에서 그대로 쓸 수 있나? (태그만 골라도 저장됩니다)">' + esc(val) + '</textarea>' +
     '<div class="jbar"><span class="hint">Enter 줄바꿈 · ' + KEY + ' 저장</span>' + (need ? '' : '<button class="lnk" data-act="cancel" data-id="' + id + '">취소</button>') +
     '<button class="btn go" data-act="save" data-id="' + id + '">저장</button></div></div>';
 }
@@ -375,26 +465,39 @@ function judgeHTML(c) {
 function save(id) {
   var c = S.byId[id], ta = document.getElementById('ta-' + id);
   if (!c || !ta) return;
-  var text = ta.value.trim(), editing = !!S.editing[id], prev = editing ? c.j.text : '';
-  if (!text) { toast('판정을 적어 주세요.', true); ta.focus(); return; }
-  if (editing && text === prev) { S.editing[id] = false; delete S.drafts[id]; replaceCard(c); return; }
+  var editing = !!S.editing[id], prev = editing ? c.j.text : '', text = composeJ(S.dtags[id] || [], ta.value);
+  if (!text) { toast('태그를 고르거나 판정을 적어 주세요.', true); ta.focus(); return; }
+  if (editing && text === prev) { S.editing[id] = false; delete S.drafts[id]; delete S.dtags[id]; replaceCard(c); return; }
   if (!gas()) { toast('Apps Script 웹앱 안에서만 저장됩니다.', true); return; }
   var wasPending = isPending(c), cardEl = ta.closest('.card'); cardEl.classList.add('saving');
   google.script.run.withSuccessHandler(function (r) {
     if (r && r.ok) {
       c.j = { row: r.row, text: r.text, kind: r.kind || (c.j && c.j.kind) || '' };
-      delete S.drafts[id]; S.open[id] = false; S.editing[id] = false;
+      delete S.drafts[id]; delete S.dtags[id]; S.open[id] = false; S.editing[id] = false;
       var msg = r.edited ? '고쳤습니다 · 숫자화(L~N)는 30분 안에 새 판정으로 다시 채워집니다' : r.appended ? "저장했습니다 · '내 판정' " + r.row + '행에 새로 추가' : '저장했습니다 · 시트 J' + r.row;
       after(c, cardEl, wasPending, msg);
     } else if (r && r.existing != null) {
-      c.j = c.j || { row: r.row, kind: '' }; c.j.text = r.existing; c.j.row = r.row; S.open[id] = false; S.editing[id] = false;
+      c.j = c.j || { row: r.row, kind: '' }; c.j.text = r.existing; c.j.row = r.row; delete S.dtags[id]; S.open[id] = false; S.editing[id] = false;
       after(c, cardEl, wasPending, '시트의 판정이 그사이 바뀌어 덮어쓰지 않았습니다. 지금 시트 내용을 보여 드립니다', true);
     } else { cardEl.classList.remove('saving'); toast('저장하지 못했습니다.', true); }
   }).withFailureHandler(function (e) { cardEl.classList.remove('saving'); toast('저장 실패: ' + (e && e.message || e), true); }).AP_save(id, text, prev);
 }
 function after(c, el, wasPending, msg, warn) {
-  updateBadge();
-  if (S.view === 'board' && wasPending) moved(c, el, msg, warn); else { replaceCard(c); toast(msg, warn); }
+  updateBadge(); updateCut();
+  if (S.view === 'board' && wasPending) moved(c, el, msg, warn);
+  else if (!shown(c)) { drop(c); toast(msg + ' · 걸러낸 문구라 목록에서 숨김', warn); }
+  else { replaceCard(c); toast(msg, warn); }
+}
+// '걸러낸 문구 숨기기'가 켜진 채 태그를 달면 그 카드를 목록에서 뺀다
+function drop(c) {
+  Object.keys(S.lists).forEach(function (k) {
+    var i = S.lists[k].indexOf(c); if (i < 0) return;
+    S.lists[k].splice(i, 1);
+    var sc = $('#sec-' + k + ' .cnt'); if (sc) sc.textContent = S.lists[k].length;
+  });
+  [].forEach.call(document.querySelectorAll('.card[data-id="' + c.id + '"]'), function (el) {
+    el.classList.add('leaving'); setTimeout(function () { el.remove(); }, 220);
+  });
 }
 // 저장된 카드를 '판정 필요'에서 빼고 성과순 목록의 제자리에 끼운다
 function moved(c, el, msg, warn) {
@@ -408,7 +511,7 @@ function moved(c, el, msg, warn) {
     if (grid && S.lists.pending.length > grid.children.length) appendBatch('pending');
     if (pendSec && !S.lists.pending.length) { var g = $('.grid', pendSec), m = $('.more', pendSec); if (g) g.remove(); if (m) m.remove(); pendSec.insertAdjacentHTML('beforeend', '<p class="empty">' + EMPTY.pending + '</p>'); }
     var k = c.s, sec = document.getElementById('sec-' + k), where = '';
-    if (!c.oos && sec && (!S.cat || c.c1 === S.cat)) {
+    if (!c.oos && sec && (!S.cat || c.c1 === S.cat) && shown(c)) {
       S.lists[k] = boardLists()[k];
       var pos = S.lists[k].indexOf(c), sg = $('.grid', sec);
       if (!sg) { sec.outerHTML = sectionHTML(k, S.lists[k]); appendBatch(k); }
@@ -417,7 +520,7 @@ function moved(c, el, msg, warn) {
       var sc = $('.cnt', document.getElementById('sec-' + k)); if (sc) sc.textContent = S.lists[k].length;
       where = SRC[k] + ' 목록 ' + (pos + 1) + '번째';
     }
-    toast(msg + (where ? ' · ' + where + '로 이동' : c.oos ? ' · 범위 밖이라 목록에는 없음' : ''), warn, where ? function () { flash(c.id, k); } : null);
+    toast(msg + (where ? ' · ' + where + '로 이동' : c.oos ? ' · 범위 밖이라 목록에는 없음' : !shown(c) ? ' · 걸러낸 문구라 목록에서 숨김' : ''), warn, where ? function () { flash(c.id, k); } : null);
     var next = pendSec && $('.card textarea', pendSec); if (next) next.focus({ preventScroll: true });
   }, 220);
 }
@@ -464,16 +567,22 @@ document.addEventListener('click', function (e) {
   var t = e.target.closest('button'); if (!t) return;
   if (t.classList.contains('tab')) { S.view = t.getAttribute('data-view'); render(); window.scrollTo(0, 0); return; }
   if (t.id === 'refresh') { refresh(); return; }
+  if (t.id === 'hide-cut') { S.hide = !S.hide; lsSet(LS_HIDE, S.hide ? '1' : '0'); if (S.view === 'board') render(); else { updateCut(); renderFindResults(); } return; }
   var grp = t.getAttribute('data-grp'), act = t.getAttribute('data-act'), id = t.getAttribute('data-id'), c = id && S.byId[id];
   if (grp === 'src') { S.src = t.getAttribute('data-val'); render(); }
   else if (grp === 'cat') { S.cat = t.getAttribute('data-val'); render(); }
   else if (grp === 'ss') { S.shortSort = t.getAttribute('data-val'); if (S.view === 'board') renderBoard(); else renderFindResults(); }
+  else if (act === 'tag' && c) { // 제자리에서 켜고 끈다(카드를 다시 그리면 적던 서술이 흔들리므로)
+    var tg = S.dtags[id] || (S.dtags[id] = []), v = t.getAttribute('data-val'), i = tg.indexOf(v);
+    if (i >= 0) tg.splice(i, 1); else tg.push(v);
+    t.setAttribute('aria-pressed', String(i < 0));
+  }
   else if (act === 'save') save(id);
   else if (act === 'more') appendBatch(t.getAttribute('data-key'));
   else if (act === 'copy') { if (c) copyText(c.p || c.t || ''); }
   else if (act === 'open' && c) { S.open[id] = true; replaceCard(c); focusBox(id); }
-  else if (act === 'edit' && c) { S.editing[id] = true; replaceCard(c); focusBox(id); }
-  else if (act === 'cancel' && c) { S.open[id] = false; S.editing[id] = false; delete S.drafts[id]; replaceCard(c); }
+  else if (act === 'edit' && c) { S.editing[id] = true; delete S.dtags[id]; delete S.drafts[id]; replaceCard(c); focusBox(id); }
+  else if (act === 'cancel' && c) { S.open[id] = false; S.editing[id] = false; delete S.drafts[id]; delete S.dtags[id]; replaceCard(c); }
 });
 document.addEventListener('keydown', function (e) {
   var t = e.target;
