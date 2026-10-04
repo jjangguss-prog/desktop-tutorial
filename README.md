@@ -77,7 +77,3 @@ tests/                node --test 로 실행하는 검사
 ```
 
 내 컴퓨터에서 확인할 때는 저장소 폴더에서 `python3 -m http.server 8000`을 실행하고 `http://localhost:8000`을 Chrome으로 엽니다. 검사는 `node --test`로 실행합니다.
-
----
-
-만든 이: 김강산
