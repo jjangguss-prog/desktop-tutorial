@@ -67,8 +67,7 @@
   let view = null; // 화면에 띄운 읽기표 위치 { cycle, index }
   let renderedToday = ymd(startOfToday());
   let day = null; // 지금 화면의 본문
-  let readMask = new Uint8Array(0); // 본문 글자마다 읽었는지
-  let cursor = 0; // 다음에 읽을 글자 위치
+  let tracker = null; // 이 본문을 어디까지·어느 글자를 읽었는지 (Matcher.Tracker)
   let tentativeEnd = 0; // 아직 확정되지 않은 인식 결과가 닿은 위치
   let seconds = 0; // 이 본문을 소리 내어 읽은 시간
   let listenStartedAt = 0;
@@ -194,7 +193,9 @@
 
   // 읽을 곳(다음에 읽을 어절)이 화면 위쪽 1/3쯤 오도록 옮긴다
   function scrollToCursor() {
-    if (!day || cursor <= 0 || cursor >= day.built.chars.length) return false;
+    if (!day || !tracker) return false;
+    const cursor = tracker.cursor;
+    if (cursor <= 0 || cursor >= tracker.length) return false;
     const el = day.wordEls[day.built.charWord[cursor]];
     const top = el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.33;
     window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
@@ -308,7 +309,7 @@
     const finished = !!doneMap()[info.key];
     if (!finished && scrollToCursor()) {
       if (opts.resume) {
-        const v = verses[built.words[built.charWord[cursor]].verse];
+        const v = verses[built.words[built.charWord[tracker.cursor]].verse];
         setStatus(`지난번에 이어 ${placeLabel(v)}부터 읽어요`);
       }
       // 글꼴이 늦게 도착하면 줄바꿈이 바뀌므로 한 번 더 맞춘다
@@ -326,54 +327,30 @@
   const progressKey = () => 'progress.' + day.info.key;
 
   function restoreProgress() {
-    const total = day.built.chars.length;
-    readMask = new Uint8Array(total);
-    cursor = 0;
-    seconds = 0;
     const saved = store.get(progressKey(), null);
-    if (saved) {
-      (saved.ranges || []).forEach(([a, b]) => readMask.fill(1, Math.max(0, a), Math.min(total, b)));
-      cursor = Math.min(total, Math.max(0, saved.cursor || 0));
-      seconds = saved.seconds || 0;
-    }
-    tentativeEnd = cursor;
+    tracker = new Matcher.Tracker(day.built, saved);
+    seconds = (saved && saved.seconds) || 0;
+    tentativeEnd = tracker.cursor;
   }
 
   function saveProgress() {
-    if (!day) return;
-    const ranges = [];
-    let s = -1;
-    for (let i = 0; i <= readMask.length; i++) {
-      const on = i < readMask.length && readMask[i];
-      if (on && s < 0) s = i;
-      if (!on && s >= 0) {
-        ranges.push([s, i]);
-        s = -1;
-      }
-    }
-    store.set(progressKey(), { ranges, cursor, seconds: Math.round(currentSeconds()) });
-  }
-
-  function readFraction() {
-    let n = 0;
-    for (let i = 0; i < readMask.length; i++) n += readMask[i];
-    return readMask.length ? n / readMask.length : 0;
+    if (!day || !tracker) return;
+    store.set(progressKey(), { ranges: tracker.ranges(), cursor: tracker.cursor, seconds: Math.round(currentSeconds()) });
   }
 
   function updateMarks() {
-    if (!day) return;
+    if (!day || !tracker) return;
     const { built, wordEls, verseEls } = day;
-    const pos = Math.max(cursor, tentativeEnd);
+    const pos = Math.max(tracker.cursor, tentativeEnd);
     const nextWord = pos < built.chars.length ? built.charWord[pos] : -1;
     const verseLen = new Array(verseEls.length).fill(0);
     const verseRead = new Array(verseEls.length).fill(0);
 
     built.words.forEach((word, i) => {
       const len = word.end - word.start;
-      let read = 0;
-      for (let k = word.start; k < word.end; k++) read += readMask[k];
-      const isRead = len > 0 && read >= Math.ceil(len * 0.6);
-      const isTentative = !isRead && len > 0 && word.start < tentativeEnd && tentativeEnd - word.start >= len * 0.6;
+      const read = tracker.readCount(word.start, word.end);
+      const isRead = tracker.wordRead(i);
+      const isTentative = !isRead && len > 0 && word.start < tentativeEnd && tentativeEnd - word.start >= len * 0.5;
       const el = wordEls[i];
       el.classList.toggle('read', isRead);
       el.classList.toggle('tentative', isTentative);
@@ -384,13 +361,13 @@
     verseEls.forEach((el, vi) => {
       el.classList.toggle('done', verseLen[vi] > 0 && verseRead[vi] >= verseLen[vi] * 0.8);
     });
-    $('meterFill').style.width = (readFraction() * 100).toFixed(1) + '%';
+    $('meterFill').style.width = (tracker.fraction() * 100).toFixed(1) + '%';
   }
 
   // 읽는 곳이 화면 밖으로 나가면 따라 내려간다
   function followReading() {
-    if (!listening || !day) return;
-    const pos = Math.max(cursor, tentativeEnd);
+    if (!listening || !day || !tracker) return;
+    const pos = Math.max(tracker.cursor, tentativeEnd);
     if (pos >= day.built.chars.length) return;
     const el = day.wordEls[day.built.charWord[pos]];
     const rect = el.getBoundingClientRect();
@@ -405,9 +382,8 @@
   const recordsMap = () => store.get('records', {});
 
   function checkCompletion() {
-    if (!day || doneMap()[day.info.key]) return;
-    const frac = readFraction();
-    if (frac >= 0.9 || (cursor >= readMask.length - 3 && frac >= 0.75)) completeDay(true);
+    if (!day || !tracker || doneMap()[day.info.key]) return;
+    if (tracker.complete()) completeDay(true);
   }
 
   function completeDay(byVoice) {
@@ -425,6 +401,11 @@
       seconds: Math.round(currentSeconds()),
     });
     store.set('records', records);
+    if (tracker) {
+      tracker.markAll();
+      tentativeEnd = tracker.cursor;
+      updateMarks();
+    }
     saveProgress();
     setBookmark();
     renderCompletion(true);
@@ -478,8 +459,7 @@
   }
 
   function rereadDay() {
-    readMask.fill(0);
-    cursor = 0;
+    tracker.reset();
     tentativeEnd = 0;
     seconds = 0;
     saveProgress();
@@ -548,20 +528,20 @@
     $('passage').classList.toggle('idle', !listening);
   }
 
-  // 이어서 읽은 말을 본문에 맞춰 보고, 맞으면 읽은 곳으로 표시한다
-  function commitSpeech(text) {
-    if (!day || !text) return;
-    const hit = Matcher.matchUtterance(day.built, cursor, text);
+  // 이어서 읽은 말을 본문에 맞춰 보고, 맞으면 읽은 곳으로 표시한다.
+  // alts: 인식기가 낸 후보들. 가장 잘 맞는 것을 쓴다.
+  function commitSpeech(alts) {
+    if (!day || !tracker) return;
+    const hit = tracker.hear(alts);
     if (!hit) {
+      if (!listening) return; // 멈춘 뒤 늦게 도착한 결과
       misses++;
       $('heard').classList.add('miss');
       if (misses >= 3) setStatus('읽는 곳을 놓쳤어요. 지금 읽는 절의 번호를 눌러 주세요.');
       return;
     }
     misses = 0;
-    readMask.fill(1, hit.start, hit.end);
-    cursor = Math.max(cursor, hit.end);
-    tentativeEnd = cursor;
+    tentativeEnd = tracker.cursor;
     if (listening) setStatus('듣고 있어요');
     updateMarks();
     followReading();
@@ -571,9 +551,8 @@
   }
 
   function previewSpeech(text) {
-    if (!day) return;
-    const hit = text ? Matcher.matchUtterance(day.built, cursor, text) : null;
-    tentativeEnd = hit ? Math.max(cursor, hit.end) : cursor;
+    if (!day || !tracker) return;
+    tentativeEnd = text ? tracker.preview(text) : tracker.cursor;
     updateMarks();
     followReading();
   }
@@ -598,7 +577,7 @@
     r.lang = 'ko-KR';
     r.continuous = true;
     r.interimResults = true;
-    r.maxAlternatives = 1;
+    r.maxAlternatives = 5; // 첫째 후보가 틀려도 다른 후보가 본문과 맞을 수 있다
     const session = { consumed: 0, pending: '' };
 
     r.onresult = (e) => {
@@ -614,14 +593,19 @@
       if (last && last.isFinal) {
         session.consumed = full.length;
         session.pending = '';
-        commitSpeech(fresh);
+        const alts = [fresh];
+        // 이번에 새로 들은 말이 마지막 결과 하나뿐이면 그 결과의 다른 후보들도 맞춰 본다
+        if (last.length > 1 && Matcher.normalizeSpoken(last[0].transcript).join('') === fresh) {
+          for (let k = 1; k < last.length; k++) alts.push(last[k].transcript);
+        }
+        commitSpeech(alts);
         previewSpeech('');
       } else if (fresh.length > 48) {
         // 길게 이어 읽는 동안에도 앞부분은 확정해 둔다 (끝의 몇 글자는 아직 바뀔 수 있음)
         const stable = fresh.slice(0, fresh.length - 12);
         session.consumed += stable.length;
         session.pending = fresh.slice(stable.length);
-        commitSpeech(stable);
+        commitSpeech([stable]);
         previewSpeech(session.pending);
       } else {
         session.pending = fresh;
@@ -653,7 +637,7 @@
       if (session.pending) {
         const pending = session.pending;
         session.pending = '';
-        commitSpeech(pending);
+        commitSpeech([pending]);
       }
       if (rec !== r) return;
       rec = null;
@@ -668,7 +652,7 @@
       }
       setTimeout(() => {
         if (listening && !rec) spawnRecognizer();
-      }, 250);
+      }, 80); // 다시 켜는 사이에 하는 말을 덜 놓치게 바로 다시 켠다
     };
 
     rec = r;
@@ -682,15 +666,16 @@
   }
 
   function startListening() {
-    if (!SR || !day || listening) return;
-    if (cursor >= day.built.chars.length) rereadDay();
+    if (!SR || !day || !tracker || listening) return;
+    if (tracker.cursor >= tracker.length) rereadDay();
+    tracker.resetEvidence();
     hideNotice();
     listening = true;
     misses = 0;
     restartTimes = [];
     listenStartedAt = performance.now();
     setMicUI();
-    setStatus('듣고 있어요. 첫 절부터 소리 내어 읽어 주세요.');
+    setStatus(tracker.cursor > 0 ? '듣고 있어요. 표시된 곳부터 읽어 주세요.' : '듣고 있어요. 첫 절부터 소리 내어 읽어 주세요.');
     showHeard('', false);
     spawnRecognizer();
     requestWakeLock();
@@ -706,7 +691,7 @@
     if (r) {
       try { r.stop(); } catch (e) { /* 이미 멈춤 */ }
     }
-    tentativeEnd = cursor;
+    if (tracker) tentativeEnd = tracker.cursor;
     updateMarks();
     saveProgress();
     setMicUI();
@@ -874,8 +859,8 @@
     const vi = Number(btn.parentElement.dataset.v);
     const first = day.built.words.find((w) => w.verse === vi && w.end > w.start);
     if (!first) return;
-    cursor = first.start;
-    tentativeEnd = cursor;
+    tracker.moveTo(first.start);
+    tentativeEnd = tracker.cursor;
     misses = 0;
     updateMarks();
     saveProgress();

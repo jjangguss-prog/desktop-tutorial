@@ -1,6 +1,6 @@
 // 한 번 연 본문과 화면은 저장해 두었다가 인터넷이 약할 때도 열리게 한다.
 // (음성 인식 자체는 브라우저가 인터넷으로 처리하므로 연결이 필요하다.)
-const CACHE = 'bible-reader-v2';
+const CACHE = 'bible-reader-v3';
 const SHELL = [
   './',
   'index.html',
