@@ -99,6 +99,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gilt); outl
 .day-head { display: flex; flex-direction: column; gap: 6px; }
 .plan-line { margin: 0; font-size: 13px; font-weight: 500; color: var(--gilt); letter-spacing: 0.04em; }
 .plan-line .dot { margin-inline: 0.45em; }
+.plan-line .schedule { color: var(--muted); font-weight: 400; }
+.plan-line .schedule::before { content: '·'; margin-inline: 0.45em; }
 .reference {
   margin: 0;
   font-family: var(--font-scripture);
@@ -116,7 +118,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gilt); outl
   font-size: 13px;
   color: var(--muted);
 }
-.day-nav #todayBtn { color: var(--leather); border-color: var(--leather); font-weight: 500; }
+.day-nav #resumeBtn { color: var(--leather); border-color: var(--leather); font-weight: 500; }
 
 .notice {
   margin: 0;
@@ -221,6 +223,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gilt); outl
 .done-panel h2 { margin: 0; font-family: var(--font-scripture); font-size: 22px; }
 .done-panel p { margin: 0; color: var(--muted); }
 .done-actions { display: flex; flex-wrap: wrap; gap: 4px 18px; }
+.next-read {
+  margin-top: 10px;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 18px;
+  background: var(--leather);
+  color: var(--leather-ink);
+  font-weight: 600;
+  text-align: left;
+  max-width: 100%;
+}
 
 .text-btn {
   border: 0;

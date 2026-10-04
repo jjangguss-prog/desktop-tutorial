@@ -54,13 +54,16 @@
   };
 
   // ---------- 상태 ----------
-  const savedSettings = store.get('settings', null);
-  const settings = Object.assign({ plan: 'year', start: ymd(startOfToday()), font: 2 }, savedSettings || {});
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(settings.start)) settings.start = ymd(startOfToday());
+  const isYmd = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+  const settings = Object.assign({ plan: 'year', starts: {}, font: 2 }, store.get('settings', null) || {});
+  if (!settings.starts || typeof settings.starts !== 'object') settings.starts = {};
+  if (isYmd(settings.start) && !settings.starts[settings.plan]) settings.starts[settings.plan] = settings.start; // 예전 형식
+  delete settings.start;
+  if (!isYmd(settings.starts[settings.plan])) settings.starts[settings.plan] = ymd(startOfToday()); // 처음 고른 날이 1일째
   if (!(settings.font >= 0 && settings.font < FONT_SIZES.length)) settings.font = 2;
-  if (!savedSettings) store.set('settings', settings); // 처음 연 날이 1일째
+  store.set('settings', settings);
 
-  let viewOffset = 0; // 오늘로부터 며칠 떨어진 날을 보고 있는지
+  let view = null; // 화면에 띄운 읽기표 위치 { cycle, index }
   let renderedToday = ymd(startOfToday());
   let day = null; // 지금 화면의 본문
   let readMask = new Uint8Array(0); // 본문 글자마다 읽었는지
@@ -101,39 +104,78 @@
     });
   }
 
-  // ---------- 읽기표 ----------
-  function dayInfo() {
-    const plan = Plans.getPlan(settings.plan, books);
-    const date = addDays(startOfToday(), viewOffset);
-    const offset = daysBetween(parseYmd(settings.start), date);
-    const idx = Math.max(0, offset);
-    const cycle = Math.floor(idx / plan.days.length);
-    const index = idx % plan.days.length;
-    const chapters = plan.days[index];
+  // ---------- 읽기표 위치 ----------
+  // 위치는 { cycle(몇 독째), index(몇 일째) }. 계산할 때는 처음부터 센 번호(abs)로 바꿔 쓴다.
+  const currentPlan = () => Plans.getPlan(settings.plan, books);
+  const dayKey = (plan, pos) => `${plan.id}:${pos.cycle}:${pos.index}`;
+  const absIndex = (plan, pos) => pos.cycle * plan.days.length + pos.index;
+  const fromAbs = (plan, n) => ({ cycle: Math.floor(n / plan.days.length), index: n % plan.days.length });
+
+  // 시작일로 따진 오늘의 계획 위치
+  function scheduledPos(plan) {
+    return fromAbs(plan, Math.max(0, daysBetween(parseYmd(settings.starts[plan.id]), startOfToday())));
+  }
+
+  // 앱을 열면 갈 곳: 마지막으로 읽던 본문, 그 본문을 다 읽었으면 그다음 본문
+  function resumePos(plan) {
+    const mark = store.get('bookmarks', {})[plan.id];
+    if (!mark || !(mark.cycle >= 0) || !(mark.index >= 0 && mark.index < plan.days.length)) return scheduledPos(plan);
+    const done = doneMap();
+    let n = absIndex(plan, mark);
+    for (let guard = 0; guard < plan.days.length && done[dayKey(plan, fromAbs(plan, n))]; guard++) n++;
+    return fromAbs(plan, n);
+  }
+
+  function setBookmark() {
+    if (!day) return;
+    const marks = store.get('bookmarks', {});
+    marks[day.info.plan.id] = { cycle: day.info.cycle, index: day.info.index };
+    store.set('bookmarks', marks);
+  }
+
+  function dayInfo(pos) {
+    const plan = currentPlan();
+    const chapters = plan.days[pos.index];
     return {
-      plan, date, offset, cycle, index, chapters,
-      key: `${plan.id}:${cycle}:${index}`,
+      plan, chapters,
+      cycle: pos.cycle,
+      index: pos.index,
+      key: dayKey(plan, pos),
       ref: Plans.describe(chapters, books),
     };
   }
 
   function renderHead(info) {
-    $('todayDate').textContent = formatDate(info.date);
-    $('planName').textContent = info.plan.name;
-    let label = `${info.index + 1}일째 / ${info.plan.days.length}일`;
+    const plan = info.plan;
+    $('todayDate').textContent = formatDate(startOfToday());
+    $('planName').textContent = plan.name;
+    let label = `${info.index + 1}일째 / ${plan.days.length}일`;
     if (info.cycle > 0) label += ` · ${info.cycle + 1}독`;
-    if (info.offset < 0) label = `시작 전 · 1일째 미리 보기`;
     $('dayLabel').textContent = label;
+    const scheduled = scheduledPos(plan);
+    const offPlan = absIndex(plan, scheduled) !== absIndex(plan, info);
+    $('scheduleNote').hidden = !offPlan;
+    $('scheduleNote').textContent = offPlan ? `계획상 오늘은 ${scheduled.index + 1}일째` : '';
     $('reference').textContent = info.ref;
-    $('todayBtn').hidden = viewOffset === 0;
-    $('prevDay').disabled = info.offset <= 0;
+    $('resumeBtn').hidden = absIndex(plan, resumePos(plan)) === absIndex(plan, info);
+    $('prevDay').disabled = absIndex(plan, info) <= 0;
     document.title = `${info.ref} · 매일 성경 낭독`;
   }
 
-  async function showDay() {
+  // 읽을 곳(다음에 읽을 어절)이 화면 위쪽 1/3쯤 오도록 옮긴다
+  function scrollToCursor() {
+    if (!day || cursor <= 0 || cursor >= day.built.chars.length) return false;
+    const el = day.wordEls[day.built.charWord[cursor]];
+    const top = el.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.33;
+    window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
+    return true;
+  }
+
+  async function showDay(pos, opts = {}) {
     stopListening();
     const token = ++showToken;
-    const info = dayInfo();
+    view = pos;
+    const info = dayInfo(pos);
     renderHead(info);
     const passageEl = $('passage');
     passageEl.innerHTML = '<p class="loading">본문을 불러오는 중…</p>';
@@ -202,6 +244,22 @@
     restoreProgress();
     updateMarks();
     renderCompletion(false);
+
+    const finished = !!doneMap()[info.key];
+    if (!finished && scrollToCursor()) {
+      if (opts.resume) {
+        const verse = verses[built.words[built.charWord[cursor]].verse].verse;
+        setStatus(`지난번에 이어 ${verse}절부터 읽어요`);
+      }
+      // 글꼴이 늦게 도착하면 줄바꿈이 바뀌므로 한 번 더 맞춘다
+      if (document.fonts) {
+        document.fonts.ready.then(() => {
+          if (token === showToken && !listening) scrollToCursor();
+        });
+      }
+    } else {
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
   }
 
   // ---------- 읽은 위치 저장 ----------
@@ -308,6 +366,7 @@
     });
     store.set('records', records);
     saveProgress();
+    setBookmark();
     renderCompletion(true);
     renderRecord();
   }
@@ -323,7 +382,9 @@
     records[date] = (records[date] || []).filter((r) => r.key !== day.info.key);
     if (!records[date].length) delete records[date];
     store.set('records', records);
+    setBookmark();
     renderCompletion(false);
+    renderHead(day.info);
     renderRecord();
     setStatus(SR ? '버튼을 누르고 본문을 읽어 주세요' : '읽고 나서 ‘다 읽음’을 눌러 주세요');
   }
@@ -342,9 +403,14 @@
     } else if (rec) {
       parts.push('직접 표시함');
     }
-    $('doneTitle').textContent = viewOffset === 0 ? '오늘의 말씀을 다 읽었어요' : '이 날 본문을 다 읽었어요';
+    $('doneTitle').textContent = date === ymd(startOfToday()) ? '오늘의 말씀을 다 읽었어요' : '이 본문을 다 읽었어요';
     $('doneDetail').textContent = parts.join(' · ');
     $('undoBtn').hidden = !rec || rec.voice;
+    const plan = day.info.plan;
+    const next = fromAbs(plan, absIndex(plan, day.info) + 1);
+    $('nextReadBtn').textContent = `다음 본문 읽기 · ${Plans.describe(plan.days[next.index], books)}`;
+    $('nextReadBtn').dataset.abs = absIndex(plan, next);
+    if (justNow) renderHead(day.info);
     if (justNow) {
       setStatus('다 읽었어요. 오늘도 수고하셨어요.');
       $('donePanel').scrollIntoView({ block: 'center', behavior: reduceMotion ? 'auto' : 'smooth' });
@@ -357,6 +423,7 @@
     tentativeEnd = 0;
     seconds = 0;
     saveProgress();
+    setBookmark();
     updateMarks();
     $('sheet').scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
     setStatus('처음부터 다시 들을게요');
@@ -437,6 +504,7 @@
     updateMarks();
     followReading();
     saveProgress();
+    setBookmark();
     checkCompletion();
   }
 
@@ -645,7 +713,7 @@
     stopListening();
     settingsChanged = false;
     renderPlanList();
-    $('startDate').value = settings.start;
+    $('startDate').value = settings.starts[settings.plan];
     applyFont();
     disarmReset();
     const dlg = $('settings');
@@ -664,9 +732,12 @@
   $('markDoneBtn').addEventListener('click', () => completeDay(false));
   $('rereadBtn').addEventListener('click', rereadDay);
   $('undoBtn').addEventListener('click', undoDone);
-  $('prevDay').addEventListener('click', () => { viewOffset--; showDay(); });
-  $('nextDay').addEventListener('click', () => { viewOffset++; showDay(); });
-  $('todayBtn').addEventListener('click', () => { viewOffset = 0; showDay(); });
+  const goAbs = (n) => showDay(fromAbs(currentPlan(), Math.max(0, n)));
+  const goResume = () => showDay(resumePos(currentPlan()), { resume: true });
+  $('prevDay').addEventListener('click', () => goAbs(absIndex(currentPlan(), view) - 1));
+  $('nextDay').addEventListener('click', () => goAbs(absIndex(currentPlan(), view) + 1));
+  $('resumeBtn').addEventListener('click', goResume);
+  $('nextReadBtn').addEventListener('click', (e) => goAbs(Number(e.currentTarget.dataset.abs)));
   $('settingsBtn').addEventListener('click', openSettings);
 
   $('passage').addEventListener('click', (e) => {
@@ -680,22 +751,27 @@
     misses = 0;
     updateMarks();
     saveProgress();
+    setBookmark();
     setStatus(`${day.verses[vi].verse}절부터 이어서 들을게요`);
   });
 
   $('planList').addEventListener('change', (e) => {
     if (e.target.name !== 'plan') return;
     settings.plan = e.target.value;
-    settings.start = ymd(startOfToday()); // 새 읽기표는 오늘부터
-    $('startDate').value = settings.start;
+    if (!isYmd(settings.starts[settings.plan])) settings.starts[settings.plan] = ymd(startOfToday()); // 처음 고른 읽기표는 오늘부터
+    $('startDate').value = settings.starts[settings.plan];
     saveSettings();
     settingsChanged = true;
   });
 
   $('startDate').addEventListener('change', (e) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) return;
-    settings.start = e.target.value;
+    if (!isYmd(e.target.value)) return;
+    settings.starts[settings.plan] = e.target.value;
     saveSettings();
+    // 시작일을 새로 정하면 그 날짜로 따진 오늘 본문부터 읽는다
+    const marks = store.get('bookmarks', {});
+    delete marks[settings.plan];
+    store.set('bookmarks', marks);
     settingsChanged = true;
   });
 
@@ -724,8 +800,7 @@
 
   $('settings').addEventListener('close', () => {
     if (settingsChanged) {
-      viewOffset = 0;
-      showDay();
+      goResume();
       renderRecord();
     }
   });
@@ -734,14 +809,15 @@
     if (document.hidden) {
       stopListening();
     } else if (ymd(startOfToday()) !== renderedToday) {
-      // 자정이 지나 다시 열면 새 본문으로
-      viewOffset = 0;
-      showDay();
+      // 날이 바뀐 뒤 다시 열면 이어 읽을 곳으로
+      goResume();
       renderRecord();
     }
   });
 
   // ---------- 시작 ----------
+  // 새로고침할 때 브라우저가 예전 스크롤 위치로 되돌리지 않게 한다 (읽을 곳으로 직접 옮김)
+  if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
   applyFont();
   if (!SR) {
     $('micBtn').disabled = true;
@@ -752,7 +828,7 @@
     $('notice').dataset.sticky = '1';
     showNotice('마이크는 https 주소(또는 내 컴퓨터의 localhost)에서만 쓸 수 있어요. GitHub Pages 주소로 열어 주세요.');
   }
-  showDay();
+  goResume();
   renderRecord();
 
   if ('serviceWorker' in navigator && window.isSecureContext) {

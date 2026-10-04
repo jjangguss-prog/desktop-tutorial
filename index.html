@@ -26,11 +26,11 @@
     </header>
 
     <section class="day-head">
-      <p class="plan-line"><span id="planName"></span><span class="dot" aria-hidden="true">·</span><span id="dayLabel"></span></p>
+      <p class="plan-line"><span id="planName"></span><span class="dot" aria-hidden="true">·</span><span id="dayLabel"></span><span class="schedule" id="scheduleNote" hidden></span></p>
       <h1 class="reference" id="reference">본문을 불러오는 중</h1>
       <nav class="day-nav" aria-label="날짜 이동">
         <button type="button" id="prevDay">‹ 전날</button>
-        <button type="button" id="todayBtn" hidden>오늘 본문으로</button>
+        <button type="button" id="resumeBtn" hidden>이어 읽을 곳으로</button>
         <button type="button" id="nextDay">다음날 ›</button>
       </nav>
     </section>
@@ -46,6 +46,7 @@
     <section class="done-panel" id="donePanel" hidden>
       <h2 id="doneTitle">오늘의 말씀을 다 읽었어요</h2>
       <p id="doneDetail"></p>
+      <button type="button" class="next-read" id="nextReadBtn">다음 본문 읽기</button>
       <div class="done-actions">
         <button type="button" class="text-btn" id="rereadBtn">처음부터 다시 읽기</button>
         <button type="button" class="text-btn" id="undoBtn" hidden>표시 취소</button>
