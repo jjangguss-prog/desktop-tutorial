@@ -84,6 +84,23 @@
       <fieldset>
         <legend>읽기표</legend>
         <div class="plans" id="planList"></div>
+        <div class="custom-plan" id="customPlan" hidden>
+          <div class="field">
+            <span>진도</span>
+            <div class="pair">
+              <select id="customMain" aria-label="진도 범위"></select>
+              <select id="customMainPerDay" aria-label="진도 하루 분량"></select>
+            </div>
+          </div>
+          <div class="field">
+            <span>시가서</span>
+            <div class="pair">
+              <select id="customPoetry" aria-label="시가서 범위"></select>
+              <select id="customPoetryPerDay" aria-label="시가서 하루 분량"></select>
+            </div>
+          </div>
+          <p class="hint" id="customSummary"></p>
+        </div>
       </fieldset>
 
       <label class="field" for="startDate">
@@ -110,6 +127,7 @@
   </dialog>
 
   <script src="js/books.js"></script>
+  <script src="js/mcheyne.js"></script>
   <script src="js/matcher.js"></script>
   <script src="js/plans.js"></script>
   <script src="js/app.js"></script>

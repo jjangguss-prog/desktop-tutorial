@@ -181,6 +181,36 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gilt); outl
   padding-right: 40px;
 }
 .chapter-title:not(:first-child) { margin-top: 34px; }
+
+/* 하루에 여러 곳을 읽는 날 (맥체인, 진도 + 시가서) */
+.reference.multi { font-size: clamp(21px, 5.6vw, 28px); line-height: 1.35; }
+.portion-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 12px;
+  padding-right: 40px;
+}
+.portion-head:not(:first-child) {
+  margin-top: 36px;
+  padding-top: 20px;
+  border-top: 1px solid var(--line);
+}
+.portion-label {
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--gilt);
+}
+.portion-ref {
+  margin: 0;
+  font-family: var(--font-scripture);
+  font-size: 1.15em;
+  font-weight: 700;
+  line-height: 1.4;
+}
+.portion-head + .chapter-title { margin-top: 0; }
 .chapter-title .num { font-family: var(--font-scripture); font-size: 2.1em; color: var(--ink); letter-spacing: 0; margin-right: 4px; }
 
 .verse { margin: 0 0 0.35em; scroll-margin-block: 30vh; }
@@ -379,6 +409,28 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--gilt); outl
   padding: 9px 10px;
   max-width: 14rem;
 }
+.custom-plan {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--paper);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.custom-plan .field > span { margin-bottom: 6px; }
+.pair { display: flex; flex-wrap: wrap; gap: 8px; }
+.pair select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--sheet);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 0;
+  max-width: 100%;
+}
+.pair select:first-child { flex: 1 1 12rem; }
+.hint { margin: 0; font-size: 13px; color: var(--muted); }
 .stepper { display: flex; align-items: center; gap: 14px; }
 .stepper button {
   min-width: 52px;
