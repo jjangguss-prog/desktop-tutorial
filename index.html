@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>매일 성경 낭독</title>
+  <meta name="description" content="매일 정해진 성경 본문을 띄워 주고, 소리 내어 읽으면 읽은 곳을 따라가며 표시합니다.">
+  <meta name="theme-color" content="#24493F">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="성경 낭독">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="top">
+      <p class="today" id="todayDate"></p>
+      <button class="icon-btn" id="settingsBtn" type="button" aria-label="읽기표와 설정">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg>
+      </button>
+    </header>
+
+    <section class="day-head">
+      <p class="plan-line"><span id="planName"></span><span class="dot" aria-hidden="true">·</span><span id="dayLabel"></span></p>
+      <h1 class="reference" id="reference">본문을 불러오는 중</h1>
+      <nav class="day-nav" aria-label="날짜 이동">
+        <button type="button" id="prevDay">‹ 전날</button>
+        <button type="button" id="todayBtn" hidden>오늘 본문으로</button>
+        <button type="button" id="nextDay">다음날 ›</button>
+      </nav>
+    </section>
+
+    <p class="notice" id="notice" role="status" hidden></p>
+
+    <article class="sheet" id="sheet">
+      <div class="ribbon" id="ribbon" aria-hidden="true"><span>읽음</span></div>
+      <div class="passage" id="passage"></div>
+      <p class="source">개역한글 · 절 번호를 누르면 그 절부터 이어서 들어요</p>
+    </article>
+
+    <section class="done-panel" id="donePanel" hidden>
+      <h2 id="doneTitle">오늘의 말씀을 다 읽었어요</h2>
+      <p id="doneDetail"></p>
+      <div class="done-actions">
+        <button type="button" class="text-btn" id="rereadBtn">처음부터 다시 읽기</button>
+        <button type="button" class="text-btn" id="undoBtn" hidden>표시 취소</button>
+      </div>
+    </section>
+
+    <section class="record" aria-label="읽은 기록">
+      <div class="record-head">
+        <h2>읽은 날</h2>
+        <p><span class="figure" id="streak">0</span>일 연속 <span class="sep" aria-hidden="true">/</span> 모두 <span class="figure" id="totalDays">0</span>일</p>
+      </div>
+      <div class="weeks" id="weeks" role="img" aria-label="최근 5주 동안 읽은 날"></div>
+    </section>
+  </div>
+
+  <div class="reader" id="reader">
+    <div class="meter" aria-hidden="true"><div class="meter-fill" id="meterFill"></div></div>
+    <div class="reader-row">
+      <button type="button" class="mic" id="micBtn" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>
+        <span id="micLabel">소리 내어 읽기</span>
+      </button>
+      <div class="reader-status">
+        <p class="status" id="statusText">버튼을 누르고 본문을 읽어 주세요</p>
+        <p class="heard" id="heard" aria-live="polite"></p>
+      </div>
+      <button type="button" class="text-btn" id="markDoneBtn">다 읽음</button>
+    </div>
+  </div>
+
+  <dialog class="settings" id="settings" aria-labelledby="settingsTitle">
+    <form method="dialog" class="settings-body">
+      <h2 id="settingsTitle">읽기표와 설정</h2>
+
+      <fieldset>
+        <legend>읽기표</legend>
+        <div class="plans" id="planList"></div>
+      </fieldset>
+
+      <label class="field" for="startDate">
+        <span>시작일 <small>이 날이 1일째가 됩니다</small></span>
+        <input type="date" id="startDate">
+      </label>
+
+      <div class="field">
+        <span>본문 글자 크기</span>
+        <div class="stepper">
+          <button type="button" id="fontDown" aria-label="글자 작게">가−</button>
+          <span id="fontValue" class="figure"></span>
+          <button type="button" id="fontUp" aria-label="글자 크게">가+</button>
+        </div>
+      </div>
+
+      <div class="field danger">
+        <span>읽은 기록</span>
+        <button type="button" class="text-btn" id="resetBtn">기록 모두 지우기</button>
+      </div>
+
+      <button class="primary" value="close" id="closeSettings">닫기</button>
+    </form>
+  </dialog>
+
+  <script src="js/books.js"></script>
+  <script src="js/matcher.js"></script>
+  <script src="js/plans.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
