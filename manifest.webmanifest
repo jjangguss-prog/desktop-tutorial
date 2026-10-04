@@ -1,0 +1,16 @@
+{
+  "name": "매일 성경 낭독",
+  "short_name": "성경 낭독",
+  "description": "매일 정해진 성경 본문을 띄워 주고, 소리 내어 읽으면 읽은 곳을 따라가며 표시합니다.",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EEF0EB",
+  "theme_color": "#24493F",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
